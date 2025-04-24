@@ -3,7 +3,11 @@
   "version": "0.0.1",
   "private": true,
   "devDependencies": {
+    "gh-pages": "^6.3.0",
     "shadow-cljs": "2.28.23"
+  },
+  "scripts": {
+    "deploy": "gh-pages -d public"
   },
   "dependencies": {
     "marked": "^15.0.10",
