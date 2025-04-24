@@ -188,33 +188,52 @@
           [:p "No comments or failed to load."])])]))
 
 (defn post-table [posts]
-  [:table {:style {:border-collapse "collapse" :width "100%"}}
-   [:thead
-    [:tr
-     [:th "Title"] [:th "Author"] [:th "Upvotes"]]]
-   [:tbody
-    (for [{:keys [data]} posts]
-      ^{:key (:id data)}
-      [:tr
-       [:td
-        [:a {:href "#"
-             :on-click #(do
-                          (.preventDefault %)
-                          (fetch-comments (:subreddit @state) (:id data)))}
-         (:title data)]]
-       [:td (:author data)]
-       [:td (:ups data)]])]])
+  [:div {:style {:overflowX "auto" :maxWidth "100%"}}
+   [:table {:style {:borderCollapse "collapse"
+                    :width "100%"
+                    :minWidth "500px"}} ;; keeps layout readable on large screens
+    [:thead
+     [:tr
+      [:th {:style {:textAlign "left" :padding "0.5rem" :borderBottom "1px solid #ccc"}} "Title"]
+      [:th {:style {:textAlign "left" :padding "0.5rem" :borderBottom "1px solid #ccc"}} "Author"]
+      [:th {:style {:textAlign "left" :padding "0.5rem" :borderBottom "1px solid #ccc"}} "Upvotes"]]]
+    [:tbody
+     (for [{:keys [data]} posts]
+       ^{:key (:id data)}
+       [:tr
+        [:td {:style {:padding "1.5rem" :borderBottom "1px solid #eee"}}
+         [:a {:href "#"
+              :on-click #(do
+                           (.preventDefault %)
+                           (fetch-comments (:subreddit @state) (:id data)))}
+          (:title data)]]
+        [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:author data)]
+        [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:ups data)]])]]])
+
 
 (defn home-page []
   [:div {:style {:padding "2rem"}}
    [:h1 "Welcome to Greyddit"]
    [:p "Select a subreddit:"]
-   [:select {:on-change #(let [sub (.. % -target -value)]
-                           (swap! state assoc :view :subreddit :subreddit sub :posts [] :history [])
-                           (fetch-reddit-posts sub))}
-    [:option {:value ""} "-- Choose a subreddit --"]
+
+   [:div {:style {:display "flex"
+                  :flexDirection "column"
+                  :gap "1rem"
+                  :marginTop "1rem"}}
     (for [s subreddits]
-      ^{:key s} [:option {:value s} s])]])
+      ^{:key s}
+      [:button
+       {:on-click #(do
+                     (swap! state assoc :view :subreddit :subreddit s :posts [] :history [])
+                     (fetch-reddit-posts s))
+        :style {:padding "1rem 1rem"
+                :fontSize "2rem"
+                :borderRadius "6px"
+                :cursor "pointer"
+                :border "1px solid #ccc"
+                :background "#f0f0f0"
+                :textAlign "left"}}
+       (str "r/" s)])]])
 
 (defn subreddit-page []
   (let [{:keys [subreddit posts error after history]} @state]
