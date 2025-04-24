@@ -8,12 +8,30 @@
                         :subreddit nil
                         :posts []
                         :after nil
-                        :history []
                         :selected-post nil
                         :comments []
-                        :error nil}))
+                        :error nil
+                        :loading? false}))
 
 (defonce subreddits ["programming" "credibledefense" "funny" "science" "gaming"])
+
+(def mobile-button-style
+  {:padding "1rem"
+   :fontSize "1.25rem"
+   :borderRadius "6px"
+   :cursor "pointer"
+   :border "1px solid #ccc"
+   :background "#f0f0f0"
+   :textAlign "left"})
+
+(defn delay-transition [transition-fn]
+  (let [delay-ms (+ 1000 (rand-int 6000))] ;; 1000 to 7000 ms
+    (swap! state assoc :loading? true)
+    (js/setTimeout
+     (fn []
+       (swap! state assoc :loading? false)
+       (transition-fn))
+     delay-ms)))
 
 (defn fetch-json [url on-success on-error]
   (-> (.fetch js/window url)
@@ -42,14 +60,10 @@
   (let [clj-data (js->clj response :keywordize-keys true)
         posts (get-in clj-data [:data :children])
         new-after (get-in clj-data [:data :after])]
-    (swap! state (fn [s]
-                   (-> s
-                       (assoc :posts posts
-                              :after new-after
-                              :error nil)
-                       (update :history #(if push-history?
-                                           (conj % (:after s))
-                                           %)))))))
+    (swap! state assoc
+           :posts posts
+           :after new-after
+           :error nil)))
 
 
 ;; ===
@@ -83,13 +97,6 @@
                  (fn [_]
                    (swap! state assoc :error "Failed to load or CORS error"))))))
 
-(defn go-back []
-  (let [{:keys [history subreddit]} @state
-        prev-after (peek history)
-        new-history (pop history)]
-    (fetch-reddit-posts subreddit prev-after false)
-    (swap! state assoc :history new-history)))
-
 ;; ===
 ;; Dealing with posts
 ;; ===
@@ -113,6 +120,24 @@
            (get-in media-data [media_id :s :u]))
          ids)))
 
+(defn flatten-comments
+  ([comments]
+   (flatten-comments comments nil))
+  ([comments parent-map]
+   (reduce
+    (fn [acc {:keys [data] :as full-comment}]
+      (let [id (:id data)
+            parent-id (:parent_id data)
+            flattened (conj acc {:comment data :parent (get parent-map parent-id)})
+            reply-children (when (map? (:replies data))
+                             (get-in data [:replies :data :children]))]
+        (if (seq reply-children)
+          (into flattened (flatten-comments reply-children (assoc parent-map (str "t1_" id) data)))
+          flattened)))
+    []
+    (or comments []))))
+
+
 (defn post-page []
   (let [{:keys [selected-post comments]} @state
         url (:url selected-post)
@@ -121,7 +146,9 @@
         gif-url (when (and video-url (re-find #"\.gif" url)) video-url)
         gallery (gallery-images selected-post)]
     [:div {:style {:padding "2rem"}}
-     [:button {:on-click #(swap! state assoc :view :subreddit :comments [] :selected-post nil)} "← Back to Subreddit"]
+     [:button {:on-click #(swap! state assoc :view :subreddit :comments [] :selected-post nil)
+               :style mobile-button-style}
+      "← Back to Subreddit"]
 
      (when selected-post
        [:div
@@ -165,27 +192,38 @@
                  :style {:max-width "100%" :margin "1rem 0" :border "1px solid #ccc"}}])
 
         ;; Self-text
-        [:div (merge {:style {:marginTop "0.5rem"
-                              :background "#f9f9f9"
-                              :padding "0.5rem"
-                              :borderRadius "4px"}}
-                     (render-markdown (:selftext selected-post)))]
+        (when (:selftext selected-post)
+          [:div (merge {:style {:marginTop "0.5rem"
+                                :background "#f9f9f9"
+                                :padding "0.5rem"
+                                :borderRadius "4px"}}
+                       (render-markdown (:selftext selected-post)))])
 
         ;; Comments
         [:h3 "Comments"]
-        (if (seq comments)
-          [:ul
-           (for [{:keys [data]} comments
-                 :when (not (:stickied data))]
-             ^{:key (:id data)}
-             [:li {:style {:marginBottom "1rem"}}
-              [:p [:b (:author data)] ":"] 
-              [:div (merge {:style {:marginTop "0.5rem"
-                                    :background "#f9f9f9"
-                                    :padding "0.5rem"
-                                    :borderRadius "4px"}}
-                           (render-markdown (:body data)))]])]
-          [:p "No comments or failed to load."])])]))
+        (let [flat-comments (flatten-comments (or comments []))]
+          (if (seq flat-comments)
+            [:div
+             (for [{:keys [comment parent]} flat-comments
+                   :when (not (:stickied comment))]
+               ^{:key (:id comment)}
+               [:div {:style {:marginBottom "2rem"}}
+                (when parent
+                  [:div {:style {:background "#eee"
+                                 :padding "0.5rem"
+                                 :marginBottom "0.5rem"
+                                 :borderRadius "4px"
+                                 :fontStyle "italic"}}
+                   [:p [:b (:author parent)] ":"]
+                   [:div (render-markdown (:body parent))]])
+
+                  [:div {:style {:background "#f9f9f9"
+                                 :padding "0.75rem"
+                                 :borderRadius "4px"
+                                 :border "1px solid #ddd"}}
+                   [:p [:b (:author comment)] ":"]
+                   [:div (when (:body comment) (render-markdown (:body comment)))]]])]
+            [:p "No comments or failed to load."]))])]))
 
 (defn post-table [posts]
   [:div {:style {:overflowX "auto" :maxWidth "100%"}}
@@ -205,7 +243,8 @@
          [:a {:href "#"
               :on-click #(do
                            (.preventDefault %)
-                           (fetch-comments (:subreddit @state) (:id data)))}
+                           (delay-transition
+                             (fn [] (fetch-comments (:subreddit @state) (:id data)))))}
           (:title data)]]
         [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:author data)]
         [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:ups data)]])]]])
@@ -223,42 +262,51 @@
     (for [s subreddits]
       ^{:key s}
       [:button
-       {:on-click #(do
-                     (swap! state assoc :view :subreddit :subreddit s :posts [] :history [])
-                     (fetch-reddit-posts s))
-        :style {:padding "1rem 1rem"
-                :fontSize "2rem"
-                :borderRadius "6px"
-                :cursor "pointer"
-                :border "1px solid #ccc"
-                :background "#f0f0f0"
-                :textAlign "left"}}
+       {:on-click #(delay-transition
+                     (fn []
+                       (swap! state assoc :view :subreddit :subreddit s :posts [])
+                       (fetch-reddit-posts s)))
+        :style mobile-button-style}
        (str "r/" s)])]])
 
 (defn subreddit-page []
-  (let [{:keys [subreddit posts error after history]} @state]
+  (let [{:keys [subreddit posts error after]} @state]
     [:div {:style {:padding "2rem"}}
      [:h1 (str "Top r/" subreddit " Posts")]
-     [:div {:style {:margin-bottom "1rem"}}
-      [:button {:on-click #(swap! state assoc :view :home)} "← Back to Home"]
-      (when (seq history)
-        [:button {:on-click go-back
-                  :style {:margin-left "1rem"}} "← Previous Page"])
+     [:div {:style {:display "flex"
+                    :flexWrap "wrap"
+                    :gap "0.5rem"
+                    :marginBottom "1rem"}}
+      [:button {:on-click #(delay-transition
+                             (fn [] (swap! state assoc :view :home)))
+                :style mobile-button-style}
+       "← Back to Home"]
+
       (when after
-        [:button {:on-click #(fetch-reddit-posts subreddit after true)
-                  :style {:margin-left "1rem"}} "Next Page →"])]
+        [:button {:on-click #(fetch-reddit-posts subreddit after false)
+                  :style mobile-button-style}
+         "Next Page →"])]
      (when error
        [:p {:style {:color "red"}} error])
      (when (seq posts)
        [post-table posts])]))
 
 (defn app []
-  (let [{:keys [view]} @state]
-    (case view
-      :home [home-page]
-      :subreddit [subreddit-page]
-      :post [post-page]
-      [:div "Unknown view"])))
+  (let [{:keys [view loading?]} @state]
+    (if loading?
+      [:div {:style {:padding "2rem"}}
+       [:h2 "Loading..."]
+       [:div {:style {:width "3rem"
+                      :height "3rem"
+                      :border "4px solid #ccc"
+                      :borderTop "4px solid #333"
+                      :borderRadius "50%"
+                      :animation "spin 1s linear infinite"}}]]
+      (case view
+        :home [home-page]
+        :subreddit [subreddit-page]
+        :post [post-page]
+        [:div "Unknown view"]))))
 
 (defn ^:dev/after-load start []
   (let [root (rdom-client/createRoot (.getElementById js/document "app"))]
