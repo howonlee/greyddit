@@ -1,1 +1,1 @@
-npm run deploy
+npx shadow-cljs release app && npm run deploy
