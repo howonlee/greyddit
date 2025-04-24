@@ -13,7 +13,21 @@
                         :error nil
                         :loading? false}))
 
-(defonce subreddits ["programming" "credibledefense" "funny" "science" "gaming"])
+(defonce subreddits ["askculinary"
+                     "askhistorians"
+                     "askscience"
+                     "clojure"
+                     "comics"
+                     "credibledefense"
+                     "curatedtumblr"
+                     "experienceddevs"
+                     "hobbydrama"
+                     "noncredibledefense"
+                     "personalfinance"
+                     "stardewvalley"
+                     "subredditdrama"
+                     "totalwar"
+                     "warcollege"])
 
 (def mobile-button-style
   {:padding "1rem"
