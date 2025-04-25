@@ -146,9 +146,14 @@
 
 (defn summarize-parent [parent]
   (when parent
-    (let [body (:body parent)]
+    (let [body (:body parent)
+          trimmed (subs body 0 (min 200 (count body)))
+          summary (if (< (count body) 200)
+                    trimmed
+                    (str trimmed "…"))]
       {:id (:id parent)
-       :summary (when body (subs body 0 (min 200 (count body))))})))
+       :author (:author parent)
+       :summary summary})))
 
 (defn flatten-comments
   ([comments]
@@ -247,7 +252,7 @@
                                  :marginBottom "0.5rem"
                                  :borderRadius "4px"
                                  :fontStyle "italic"}}
-                   [:p [:b (:id parent)] ":"]
+                   [:p [:b (:author parent)] ":"]
                    [:div (render-markdown (:summary parent))]])
 
                 [:div {:style {:background "#f9f9f9"
