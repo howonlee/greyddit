@@ -38,14 +38,18 @@
    :background "#f0f0f0"
    :textAlign "left"})
 
-(defn delay-transition [transition-fn]
-  (let [delay-ms (+ 1000 (rand-int 6000))] ;; 1000 to 7000 ms
-    (swap! state assoc :loading? true)
-    (js/setTimeout
-     (fn []
-       (swap! state assoc :loading? false)
-       (transition-fn))
-     delay-ms)))
+(defn delay-transition
+  ([transition-fn]
+   (delay-transition nil transition-fn))
+  ([preload-fn transition-fn]
+   (let [delay-ms (+ 1000 (rand-int 6000))] ;; 1s to 7s
+     (swap! state assoc :loading? true)
+     (when preload-fn (preload-fn)) ;; start preload immediately
+     (js/setTimeout
+      (fn []
+        (swap! state assoc :loading? false)
+        (transition-fn))
+      delay-ms))))
 
 (defn fetch-json [url on-success on-error]
   (-> (.fetch js/window url)
@@ -258,7 +262,8 @@
               :on-click #(do
                            (.preventDefault %)
                            (delay-transition
-                             (fn [] (fetch-comments (:subreddit @state) (:id data)))))}
+                             (fn [] (fetch-comments (:subreddit @state) (:id data))) ;; preload
+                             (fn [] (swap! state assoc :view :post))))}
           (:title data)]]
         [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:author data)]
         [:td {:style {:padding "0.5rem" :borderBottom "1px solid #eee"}} (:ups data)]])]]])
@@ -277,9 +282,8 @@
       ^{:key s}
       [:button
        {:on-click #(delay-transition
-                     (fn []
-                       (swap! state assoc :view :subreddit :subreddit s :posts [])
-                       (fetch-reddit-posts s)))
+                     (fn [] (fetch-reddit-posts s)) ;; preload
+                     (fn [] (swap! state assoc :view :subreddit :subreddit s)))
         :style mobile-button-style}
        (str "r/" s)])]])
 
@@ -291,9 +295,9 @@
                     :flexWrap "wrap"
                     :gap "0.5rem"
                     :marginBottom "1rem"}}
-      [:button {:on-click #(delay-transition
-                             (fn [] (swap! state assoc :view :home)))
-                :style mobile-button-style}
+      [:button
+       {:on-click #(delay-transition nil (fn [] (swap! state assoc :view :home)))
+        :style mobile-button-style}
        "← Back to Home"]
 
       (when after
