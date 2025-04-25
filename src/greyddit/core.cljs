@@ -119,14 +119,26 @@
 ;; Dealing with posts
 ;; ===
 
+(defn decode-url [s]
+  (clojure.string/replace s #"&amp;" "&"))
+
 (defn reddit-image-url [post]
-  (get-in post [:preview :images 0 :source :url]))
+  (let [preview-url (some-> (get-in post [:preview :images 0 :source :url]) decode-url)
+        direct-url  (some-> (:url post) decode-url)]
+    (cond
+      preview-url preview-url
+      ;; Use direct URL for NSFW if it's an image
+      (and (:over_18 post)
+           (re-matches #"(?i).*\.(jpg|jpeg|png|gif)$" direct-url))
+      direct-url)))
 
 (defn reddit-video-url [post]
-  (get-in post [:media :reddit_video :fallback_url]))
+  (when-let [url (get-in post [:media :reddit_video :fallback_url])]
+    (decode-url url)))
 
 (defn reddit-gif-url [post]
-  (get-in post [:media :reddit_video :fallback_url]))
+  (when-let [url (get-in post [:media :reddit_video :fallback_url])]
+    (decode-url url)))
 
 (defn is-youtube-url? [url]
   (re-find #"(?i)youtube\.com|youtu\.be" url))
@@ -134,9 +146,9 @@
 (defn gallery-images [post]
   (let [media-data (get post :media_metadata)
         ids (get-in post [:gallery_data :items])]
-    (map (fn [{:keys [media_id]}]
-           (get-in media-data [media_id :s :u]))
-         ids)))
+    (keep (fn [{:keys [media_id]}]
+            (some-> (get-in media-data [media_id :s :u]) decode-url))
+          ids)))
 
 (defn flatten-comments
   ([comments]
@@ -207,7 +219,9 @@
                    (not (is-youtube-url? url))
                    (re-matches #"(?i).*\.(jpg|jpeg|png|gif)$" image-url))
           [:img {:src image-url
-                 :style {:max-width "100%" :margin "1rem 0" :border "1px solid #ccc"}}])
+                 :style {:max-width "100%" :margin "1rem 0" :border "1px solid #ccc"}
+                 :on-error #(set! (.-display (.-style (.-target %))) "none")}])
+
 
         ;; Self-text
         (when (:selftext selected-post)
