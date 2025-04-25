@@ -123,14 +123,8 @@
   (clojure.string/replace s #"&amp;" "&"))
 
 (defn reddit-image-url [post]
-  (let [preview-url (some-> (get-in post [:preview :images 0 :source :url]) decode-url)
-        direct-url  (some-> (:url post) decode-url)]
-    (cond
-      preview-url preview-url
-      ;; Use direct URL for NSFW if it's an image
-      (and (:over_18 post)
-           (re-matches #"(?i).*\.(jpg|jpeg|png|gif)$" direct-url))
-      direct-url)))
+  (let [direct-url  (some-> (:url post) decode-url)]
+    direct-url))
 
 (defn reddit-video-url [post]
   (when-let [url (get-in post [:media :reddit_video :fallback_url])]
