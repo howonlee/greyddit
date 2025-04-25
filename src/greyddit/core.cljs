@@ -144,6 +144,12 @@
             (some-> (get-in media-data [media_id :s :u]) decode-url))
           ids)))
 
+(defn summarize-parent [parent]
+  (when parent
+    (let [body (:body parent)]
+      {:id (:id parent)
+       :summary (when body (subs body 0 (min 200 (count body))))})))
+
 (defn flatten-comments
   ([comments]
    (flatten-comments comments nil))
@@ -152,7 +158,8 @@
     (fn [acc {:keys [data] :as full-comment}]
       (let [id (:id data)
             parent-id (:parent_id data)
-            flattened (conj acc {:comment data :parent (get parent-map parent-id)})
+            parent-summary (summarize-parent (get parent-map parent-id))
+            flattened (conj acc {:comment data :parent parent-summary})
             reply-children (when (map? (:replies data))
                              (get-in data [:replies :data :children]))]
         (if (seq reply-children)
@@ -240,15 +247,15 @@
                                  :marginBottom "0.5rem"
                                  :borderRadius "4px"
                                  :fontStyle "italic"}}
-                   [:p [:b (:author parent)] ":"]
-                   [:div (render-markdown (:body parent))]])
+                   [:p [:b (:id parent)] ":"]
+                   [:div (render-markdown (:summary parent))]])
 
-                  [:div {:style {:background "#f9f9f9"
-                                 :padding "0.75rem"
-                                 :borderRadius "4px"
-                                 :border "1px solid #ddd"}}
-                   [:p [:b (:author comment)] ":"]
-                   [:div (when (:body comment) (render-markdown (:body comment)))]]])]
+                [:div {:style {:background "#f9f9f9"
+                               :padding "0.75rem"
+                               :borderRadius "4px"
+                               :border "1px solid #ddd"}}
+                 [:p [:b (:author comment)] ":"]
+                 [:div (when (:body comment) (render-markdown (:body comment)))]]])]
             [:p "No comments or failed to load."]))])]))
 
 (defn post-table [posts]
